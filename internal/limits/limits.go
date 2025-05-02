@@ -16,10 +16,9 @@ type Limiter interface {
 }
 
 type bucket struct {
-	tokens     int
-	capacity   int
-	rate       int
-	lastRefill time.Time
+	tokens   int
+	capacity int
+	rate     int
 }
 
 type Limit struct {
@@ -30,23 +29,49 @@ type Limit struct {
 	defaultRate int
 	pg          *postgres.PgClient
 	logger      *log.Logger
+	ticker      *time.Ticker
+	stopChan    chan struct{}
 }
 
 func NewLimit(ctx context.Context, defaultCap int, defaultRate int, client *postgres.PgClient, logg *log.Logger) *Limit {
-	return &Limit{
+	l := &Limit{
 		ctx:         ctx,
 		buckets:     make(map[string]*bucket),
 		defaultCap:  defaultCap,
 		defaultRate: defaultRate,
 		pg:          client,
 		logger:      logg,
+		stopChan:    make(chan struct{}),
+	}
+
+	l.ticker = time.NewTicker(1 * time.Second)
+
+	return l
+}
+
+func (l *Limit) RefillTokensPeriodically() {
+	for {
+		select {
+		case <-l.stopChan:
+			l.logger.Println("Stopping token refill")
+			return
+		case <-l.ticker.C:
+			l.mu.Lock()
+			for key, b := range l.buckets {
+				b.tokens += b.rate
+				if b.tokens > b.capacity {
+					b.tokens = b.capacity
+				}
+				l.buckets[key] = b
+			}
+			l.mu.Unlock()
+		}
 	}
 }
 
 func (l *Limit) Allow(key string) bool {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	now := time.Now()
 	b, ok := l.buckets[key]
 	if !ok {
 		l.logger.Printf("limits[Allow]: key %s not found in buckets, updating", key)
@@ -61,10 +86,9 @@ func (l *Limit) Allow(key string) bool {
 				allowed = false
 			}
 			l.buckets[key] = &bucket{
-				tokens:     curTokens,
-				capacity:   l.defaultCap,
-				rate:       l.defaultRate,
-				lastRefill: now,
+				tokens:   curTokens,
+				capacity: l.defaultCap,
+				rate:     l.defaultRate,
 			}
 		} else {
 			curTokens = client.Capacity - 1
@@ -73,24 +97,12 @@ func (l *Limit) Allow(key string) bool {
 				allowed = false
 			}
 			l.buckets[key] = &bucket{
-				tokens:     curTokens,
-				capacity:   client.Capacity,
-				rate:       client.Rate,
-				lastRefill: now,
+				tokens:   curTokens,
+				capacity: client.Capacity,
+				rate:     client.Rate,
 			}
 		}
 		return allowed
-	}
-
-	elapsedSecs := int(now.Sub(b.lastRefill).Seconds())
-	refillTokens := elapsedSecs * b.rate
-
-	if refillTokens > 0 {
-		b.tokens += refillTokens
-		if b.tokens > b.capacity {
-			b.tokens = b.capacity
-		}
-		b.lastRefill = b.lastRefill.Add(time.Duration(elapsedSecs) * time.Second)
 	}
 
 	if b.tokens <= 0 {
@@ -104,12 +116,10 @@ func (l *Limit) SetLimit(client domain.Client) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
-	now := time.Now()
 	l.buckets[client.Id] = &bucket{
-		tokens:     client.Capacity,
-		capacity:   client.Capacity,
-		rate:       client.Rate,
-		lastRefill: now,
+		tokens:   client.Capacity,
+		capacity: client.Capacity,
+		rate:     client.Rate,
 	}
 }
 
@@ -117,4 +127,9 @@ func (l *Limit) ResetLimit(key string) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	delete(l.buckets, key)
+}
+
+func (l *Limit) Stop() {
+	close(l.stopChan)
+	l.ticker.Stop()
 }

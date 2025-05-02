@@ -78,6 +78,12 @@ func main() {
 	defaultRefillRate := viper.GetInt("limits.default_refill_rate")
 	limiter := limits.NewLimit(ctx, defaultMaxKeys, defaultRefillRate, pgClient, logger)
 
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		limiter.RefillTokensPeriodically()
+	}()
+
 	// Server start
 	router := chi.NewRouter()
 
