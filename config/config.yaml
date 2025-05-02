@@ -1,0 +1,20 @@
+postgres:
+  user: postgres
+  password: password
+  dbname: clients
+  host: db
+  port: 5432
+  max_attempts: 5
+
+balancer:
+  algo: round-robin
+  servers:
+    - localhost:8080
+  check_path: ping
+
+limits:
+  default_max_keys: 5
+  default_refill_rate: 1
+
+api:
+  key: qwerty
