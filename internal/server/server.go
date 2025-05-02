@@ -11,6 +11,7 @@ import (
 	"log"
 	"net/http"
 	"net/http/httputil"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -192,6 +193,7 @@ func (s *Service) RateLimitAndPickServer() func(http.Handler) http.Handler {
 				return
 			}
 			server, err := s.bal.Next()
+			s.logger.Printf("server[RateLimitAndPickServer]: next server for key %s is %s", key, server)
 			if err != nil {
 				if errors.Is(err, balancer.ErrNoAvailableServers) {
 					s.logger.Printf("server[RateLimitAndPickServer]: no available backends for request from %s", key)
@@ -221,9 +223,14 @@ func (s *Service) ReverseProxyHandler(w http.ResponseWriter, r *http.Request) {
 		writeError(w, "backend not selected", http.StatusInternalServerError)
 		return
 	}
+	s.logger.Printf("server[ReverseProxyHandler]: proxy for %s", srv)
 	s.proxy.Director = func(req *http.Request) {
 		req.URL.Scheme = "http"
 		req.URL.Host = srv
+		req.URL.Path = strings.TrimPrefix(req.URL.Path, "/api")
+		if req.URL.Path == "" {
+			req.URL.Path = "/"
+		}
 	}
 	s.proxy.ServeHTTP(w, r)
 }

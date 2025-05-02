@@ -172,9 +172,13 @@ func NewBalancer(algo string, state *State) Balancer {
 			index: 0,
 		}
 	case "least-connections":
+		conn := make(map[string]*int64)
+		for _, srv := range state.Servers {
+			conn[srv] = new(int64)
+		}
 		return &LeastConnections{
 			state:       state,
-			connections: make(map[string]*int64),
+			connections: conn,
 		}
 	case "random":
 		return &Random{

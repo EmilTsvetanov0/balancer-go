@@ -6,6 +6,8 @@ services:
     container_name: balancer
     ports:
       - "${PORT}:8080"
+    volumes:
+      - ./config/config.yaml:/app/config/config.yaml:ro
     environment:
       - PORT=${PORT}
     networks:
@@ -29,6 +31,42 @@ services:
       timeout: 10s
       retries: 5
       start_period: 10s
+    networks:
+      - internal
+
+  mock1:
+    build:
+      context: ./test_utils
+    container_name: mock1
+    ports:
+      - "8081:8080"
+    environment:
+      - PORT=8080
+      - NAME=M1
+    networks:
+      - internal
+
+  mock2:
+    build:
+      context: ./test_utils
+    container_name: mock2
+    ports:
+      - "8082:8080"
+    environment:
+      - PORT=8080
+      - NAME=M2
+    networks:
+      - internal
+
+  mock3:
+    build:
+      context: ./test_utils
+    container_name: mock3
+    ports:
+      - "8083:8080"
+    environment:
+      - PORT=8080
+      - NAME=M3
     networks:
       - internal
 

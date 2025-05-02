@@ -9,7 +9,9 @@ postgres:
 balancer:
   algo: round-robin
   servers:
-    - localhost:8080
+    - mock1:8080
+    - mock2:8080
+    - mock3:8080
   check_path: /ping
 
 limits:
