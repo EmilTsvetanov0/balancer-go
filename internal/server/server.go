@@ -193,7 +193,6 @@ func (s *Service) RateLimitAndPickServer() func(http.Handler) http.Handler {
 				return
 			}
 			server, err := s.bal.Next()
-			s.logger.Printf("server[RateLimitAndPickServer]: next server for key %s is %s", key, server)
 			if err != nil {
 				if errors.Is(err, balancer.ErrNoAvailableServers) {
 					s.logger.Printf("server[RateLimitAndPickServer]: no available backends for request from %s", key)
@@ -215,7 +214,6 @@ func (s *Service) RateLimitAndPickServer() func(http.Handler) http.Handler {
 
 // ReverseProxyHandler — проксирует запрос на выбранный бэкенд из контекста
 func (s *Service) ReverseProxyHandler(w http.ResponseWriter, r *http.Request) {
-	s.logger.Printf("server[ReverseProxyHandler]: proxy for %s", r.URL.Path)
 	val := r.Context().Value(serverContextKey)
 	srv, ok := val.(string)
 	if !ok {
@@ -223,7 +221,6 @@ func (s *Service) ReverseProxyHandler(w http.ResponseWriter, r *http.Request) {
 		writeError(w, "backend not selected", http.StatusInternalServerError)
 		return
 	}
-	s.logger.Printf("server[ReverseProxyHandler]: proxy for %s", srv)
 	s.proxy.Director = func(req *http.Request) {
 		req.URL.Scheme = "http"
 		req.URL.Host = srv
