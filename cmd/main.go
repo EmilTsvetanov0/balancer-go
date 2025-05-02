@@ -76,7 +76,7 @@ func main() {
 	// Limiter default config
 	defaultMaxKeys := viper.GetInt("limits.default_max_keys")
 	defaultRefillRate := viper.GetInt("limits.default_refill_rate")
-	limiter := limits.NewLimit(defaultMaxKeys, defaultRefillRate)
+	limiter := limits.NewLimit(ctx, defaultMaxKeys, defaultRefillRate, pgClient, logger)
 
 	// Server start
 	router := chi.NewRouter()

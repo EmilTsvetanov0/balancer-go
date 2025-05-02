@@ -5,3 +5,10 @@ type Client struct {
 	Capacity int    `json:"capacity"`
 	Rate     int    `json:"rate"`
 }
+
+// --- Errors ---
+
+type ErrorResponse struct {
+	Code    int    `json:"code"`
+	Message string `json:"message"`
+}

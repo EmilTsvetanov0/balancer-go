@@ -45,8 +45,8 @@ func New(ctx context.Context, pg *postgres.PgClient, limiter limits.Limiter, bal
 	s.proxy = &httputil.ReverseProxy{
 		Director: func(req *http.Request) {},
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
-			s.logger.Printf("proxy error: %v", err)
-			http.Error(w, "bad gateway", http.StatusBadGateway)
+			s.logger.Printf("server[New]: proxy error: %v", err)
+			writeError(w, "bad gateway", http.StatusBadGateway)
 		},
 	}
 	for _, opt := range opts {
@@ -69,8 +69,14 @@ func writeJSON(w http.ResponseWriter, code int, v interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
 	if err := json.NewEncoder(w).Encode(v); err != nil {
-		log.Printf("writeJSON error: %v", err)
+		log.Printf("server[writeJSON] error: %v", err)
 	}
+}
+
+func writeError(w http.ResponseWriter, msg string, code int) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	_ = json.NewEncoder(w).Encode(domain.ErrorResponse{Code: code, Message: msg})
 }
 
 // SetupRoutes настраивает маршруты в переданном Router
@@ -102,7 +108,7 @@ func APIKeyAuthMiddleware(key string) func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.Header.Get("X-API-Key") != key {
 				log.Printf("unauthorized access from %s", r.RemoteAddr)
-				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+				writeError(w, "Unauthorized", http.StatusUnauthorized)
 				return
 			}
 			next.ServeHTTP(w, r)
@@ -117,12 +123,12 @@ func (s *Service) GetClientHandler(w http.ResponseWriter, r *http.Request) {
 	client, err := s.pg.GetClient(s.ctx, id)
 	if err != nil {
 		if errors.Is(err, postgres.ErrClientNotFound) {
-			s.logger.Printf("client %s not found", id)
-			http.Error(w, "client not found", http.StatusNotFound)
+			s.logger.Printf("server[GetClientHandler]: client %s not found", id)
+			writeError(w, "client not found", http.StatusNotFound)
 			return
 		}
-		s.logger.Printf("error fetching client %s: %v", id, err)
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		s.logger.Printf("server[GetClientHandler]: error fetching client %s: %v", id, err)
+		writeError(w, "internal error", http.StatusInternalServerError)
 		return
 	}
 	writeJSON(w, http.StatusOK, client)
@@ -131,13 +137,13 @@ func (s *Service) GetClientHandler(w http.ResponseWriter, r *http.Request) {
 func (s *Service) CreateClientHandler(w http.ResponseWriter, r *http.Request) {
 	var c domain.Client
 	if err := json.NewDecoder(r.Body).Decode(&c); err != nil {
-		s.logger.Printf("bad create client request: %v", err)
-		http.Error(w, "invalid request", http.StatusBadRequest)
+		s.logger.Printf("server[CreateClientHandler]: bad create client request: %v", err)
+		writeError(w, "invalid request", http.StatusBadRequest)
 		return
 	}
 	if err := s.pg.InsertClient(s.ctx, c); err != nil {
-		s.logger.Printf("could not create client %s: %v", c.Id, err)
-		http.Error(w, "could not create client", http.StatusBadRequest)
+		s.logger.Printf("server[CreateClientHandler]: could not create client %s: %v", c.Id, err)
+		writeError(w, "could not create client", http.StatusBadRequest)
 		return
 	}
 	s.limiter.SetLimit(c)
@@ -147,13 +153,13 @@ func (s *Service) CreateClientHandler(w http.ResponseWriter, r *http.Request) {
 func (s *Service) UpdateClientHandler(w http.ResponseWriter, r *http.Request) {
 	var c domain.Client
 	if err := json.NewDecoder(r.Body).Decode(&c); err != nil {
-		s.logger.Printf("bad update client request: %v", err)
-		http.Error(w, "invalid request", http.StatusBadRequest)
+		s.logger.Printf("server[UpdateClientHandler]: bad update client request: %v", err)
+		writeError(w, "invalid request", http.StatusBadRequest)
 		return
 	}
 	if err := s.pg.UpdateClient(s.ctx, c); err != nil {
-		s.logger.Printf("client %s not found for update", c.Id)
-		http.Error(w, "client not found", http.StatusNotFound)
+		s.logger.Printf("server[UpdateClientHandler]: client %s not found for update", c.Id)
+		writeError(w, "client not found", http.StatusNotFound)
 		return
 	}
 	s.limiter.SetLimit(c)
@@ -163,8 +169,8 @@ func (s *Service) UpdateClientHandler(w http.ResponseWriter, r *http.Request) {
 func (s *Service) DeleteClientHandler(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if err := s.pg.DeleteClient(s.ctx, id); err != nil {
-		s.logger.Printf("client %s not found for delete", id)
-		http.Error(w, "client not found", http.StatusNotFound)
+		s.logger.Printf("server[DeleteClientHandler]: client %s not found for delete", id)
+		writeError(w, "client not found", http.StatusNotFound)
 		return
 	}
 	s.limiter.ResetLimit(id)
@@ -181,19 +187,19 @@ func (s *Service) RateLimitAndPickServer() func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			key := extractClientID(r)
 			if !s.limiter.Allow(key) {
-				s.logger.Printf("rate limit exceeded for key %s", key)
-				http.Error(w, "Rate limit exceeded", http.StatusTooManyRequests)
+				s.logger.Printf("server[RateLimitAndPickServer]: rate limit exceeded for key %s", key)
+				writeError(w, "Rate limit exceeded", http.StatusTooManyRequests)
 				return
 			}
 			server, err := s.bal.Next()
 			if err != nil {
 				if errors.Is(err, balancer.ErrNoAvailableServers) {
-					s.logger.Printf("no available backends for request from %s", key)
-					http.Error(w, "No available backends", http.StatusServiceUnavailable)
+					s.logger.Printf("server[RateLimitAndPickServer]: no available backends for request from %s", key)
+					writeError(w, "No available backends", http.StatusServiceUnavailable)
 					return
 				}
-				s.logger.Printf("error selecting backend: %v", err)
-				http.Error(w, "internal error", http.StatusInternalServerError)
+				s.logger.Printf("server[RateLimitAndPickServer]: error selecting backend: %v", err)
+				writeError(w, "internal error", http.StatusInternalServerError)
 				return
 			}
 			s.bal.StartRequest(server)
@@ -207,11 +213,12 @@ func (s *Service) RateLimitAndPickServer() func(http.Handler) http.Handler {
 
 // ReverseProxyHandler — проксирует запрос на выбранный бэкенд из контекста
 func (s *Service) ReverseProxyHandler(w http.ResponseWriter, r *http.Request) {
+	s.logger.Printf("server[ReverseProxyHandler]: proxy for %s", r.URL.Path)
 	val := r.Context().Value(serverContextKey)
 	srv, ok := val.(string)
 	if !ok {
-		s.logger.Printf("backend server not set in context")
-		http.Error(w, "backend not selected", http.StatusInternalServerError)
+		s.logger.Printf("server[ReverseProxyHandler]: backend server not set in context")
+		writeError(w, "backend not selected", http.StatusInternalServerError)
 		return
 	}
 	s.proxy.Director = func(req *http.Request) {

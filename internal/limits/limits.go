@@ -2,6 +2,9 @@ package limits
 
 import (
 	"balancer/internal/domain"
+	postgres "balancer/internal/postgresql"
+	"context"
+	"log"
 	"sync"
 	"time"
 )
@@ -20,17 +23,23 @@ type bucket struct {
 }
 
 type Limit struct {
+	ctx         context.Context
 	mu          sync.Mutex
 	buckets     map[string]*bucket
 	defaultCap  int
 	defaultRate int
+	pg          *postgres.PgClient
+	logger      *log.Logger
 }
 
-func NewLimit(defaultCap int, defaultRate int) *Limit {
+func NewLimit(ctx context.Context, defaultCap int, defaultRate int, client *postgres.PgClient, logg *log.Logger) *Limit {
 	return &Limit{
+		ctx:         ctx,
 		buckets:     make(map[string]*bucket),
 		defaultCap:  defaultCap,
 		defaultRate: defaultRate,
+		pg:          client,
+		logger:      logg,
 	}
 }
 
@@ -40,11 +49,23 @@ func (l *Limit) Allow(key string) bool {
 	now := time.Now()
 	b, ok := l.buckets[key]
 	if !ok {
-		l.buckets[key] = &bucket{
-			tokens:     l.defaultCap - 1,
-			capacity:   l.defaultCap,
-			rate:       l.defaultRate,
-			lastRefill: now,
+		l.logger.Printf("limits[Allow]: key %s not found in buckets, updating", key)
+		client, err := l.pg.GetClient(l.ctx, key)
+		if err != nil {
+			l.logger.Printf("limits[Allow]: setting default limits, error getting client for key %s: %v", key, err)
+			l.buckets[key] = &bucket{
+				tokens:     l.defaultCap - 1,
+				capacity:   l.defaultCap,
+				rate:       l.defaultRate,
+				lastRefill: now,
+			}
+		} else {
+			l.buckets[key] = &bucket{
+				tokens:     client.Capacity - 1,
+				capacity:   client.Capacity,
+				rate:       client.Rate,
+				lastRefill: now,
+			}
 		}
 		return true
 	}

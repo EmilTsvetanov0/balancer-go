@@ -189,11 +189,11 @@ func NewBalancer(algo string, state *State) Balancer {
 // --- Health monitoring ---
 
 func SetupLogging(ctx context.Context, logger *log.Logger, logCh <-chan string) {
-	logger.Printf("starting logging from %v", time.Now())
+	logger.Printf("balancer[SetupLogging]: starting logging from %v", time.Now())
 	for {
 		select {
 		case <-ctx.Done():
-			logger.Printf("context canceled, shutting down")
+			logger.Printf("balancer[SetupLogging]: context canceled, shutting down")
 			return
 		case msg := <-logCh:
 			logger.Printf("%s", msg)
@@ -214,7 +214,7 @@ func HealthMonitor(ctx context.Context, state *State, checkInterval time.Duratio
 		case <-ticker.C:
 		}
 
-		logCh <- "Sending health check request"
+		logCh <- "balancer[HealthMonitor]: Sending health check request"
 
 		// В теории сервера не меняются, но на всякий случай лучше обновлять. Может быть добавится функционал
 		state.mu.RLock()
@@ -246,7 +246,7 @@ func CheckHealth(client *http.Client, state *State, server, path string, wasAliv
 	if err != nil {
 		if wasAlive {
 			state.SetServerStatus(server, false)
-			logCh <- fmt.Sprintf("[CheckHealth] server %s %s is down with error: %v", server, path, err)
+			logCh <- fmt.Sprintf("balancer[CheckHealth]: server %s %s is down with error: %v", server, path, err)
 		}
 		return
 	}
@@ -254,13 +254,13 @@ func CheckHealth(client *http.Client, state *State, server, path string, wasAliv
 	if resp.StatusCode != 200 {
 		if wasAlive {
 			state.SetServerStatus(server, false)
-			logCh <- fmt.Sprintf("[CheckHealth] server %s %s is down with status code: %d", server, path, resp.StatusCode)
+			logCh <- fmt.Sprintf("balancer[CheckHealth]: server %s %s is down with status code: %d", server, path, resp.StatusCode)
 		}
 		return
 	}
 
 	if !wasAlive {
 		state.SetServerStatus(server, true)
-		logCh <- fmt.Sprintf("[CheckHealth] server %s %s is up", server, path)
+		logCh <- fmt.Sprintf("balancer[CheckHealth]: server %s %s is up", server, path)
 	}
 }
