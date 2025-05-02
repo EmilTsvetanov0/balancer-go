@@ -26,6 +26,8 @@ func init() {
 
 func main() {
 
+	logger := log.Default()
+
 	ctx, cancel := context.WithCancel(context.Background())
 
 	go func() {
@@ -38,7 +40,9 @@ func main() {
 	// Balancer
 
 	algo := viper.GetString("balancer.algo")
+	logger.Printf("algo: %s", algo)
 	servers := viper.GetStringSlice("balancer.servers")
+	logger.Printf("servers: %v", servers)
 	state := balancer.BaseState(servers)
 
 	bal := balancer.NewBalancer(algo, state)
@@ -46,8 +50,6 @@ func main() {
 	checkPath := viper.GetString("balancer.check_path")
 
 	wg := sync.WaitGroup{}
-
-	logger := log.Default()
 
 	wg.Add(1)
 	go func() {

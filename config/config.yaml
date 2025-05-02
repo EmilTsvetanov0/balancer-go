@@ -10,7 +10,7 @@ balancer:
   algo: round-robin
   servers:
     - localhost:8080
-  check_path: ping
+  check_path: /ping
 
 limits:
   default_max_keys: 5

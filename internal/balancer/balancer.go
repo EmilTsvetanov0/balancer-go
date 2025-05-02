@@ -243,15 +243,24 @@ func CheckHealth(client *http.Client, state *State, server, path string, wasAliv
 	url := fmt.Sprintf("http://%s%s", server, path)
 
 	resp, err := client.Get(url)
-	if err != nil || resp.StatusCode != 200 {
+	if err != nil {
+		if wasAlive {
+			state.SetServerStatus(server, false)
+			logCh <- fmt.Sprintf("[CheckHealth] server %s %s is down with error: %v", server, path, err)
+		}
+		return
+	}
+
+	if resp.StatusCode != 200 {
 		if wasAlive {
 			state.SetServerStatus(server, false)
 			logCh <- fmt.Sprintf("[CheckHealth] server %s %s is down with status code: %d", server, path, resp.StatusCode)
 		}
-	} else {
-		if !wasAlive {
-			state.SetServerStatus(server, true)
-			logCh <- fmt.Sprintf("[CheckHealth] server %s %s is up", server, path)
-		}
+		return
+	}
+
+	if !wasAlive {
+		state.SetServerStatus(server, true)
+		logCh <- fmt.Sprintf("[CheckHealth] server %s %s is up", server, path)
 	}
 }
