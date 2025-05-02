@@ -51,23 +51,35 @@ func (l *Limit) Allow(key string) bool {
 	if !ok {
 		l.logger.Printf("limits[Allow]: key %s not found in buckets, updating", key)
 		client, err := l.pg.GetClient(l.ctx, key)
+		var curTokens int
+		var allowed = true
 		if err != nil {
 			l.logger.Printf("limits[Allow]: setting default limits, error getting client for key %s: %v", key, err)
+			curTokens = l.defaultCap - 1
+			if curTokens < 0 {
+				curTokens = 0
+				allowed = false
+			}
 			l.buckets[key] = &bucket{
-				tokens:     l.defaultCap - 1,
+				tokens:     curTokens,
 				capacity:   l.defaultCap,
 				rate:       l.defaultRate,
 				lastRefill: now,
 			}
 		} else {
+			curTokens = client.Capacity - 1
+			if curTokens < 0 {
+				curTokens = 0
+				allowed = false
+			}
 			l.buckets[key] = &bucket{
-				tokens:     client.Capacity - 1,
+				tokens:     curTokens,
 				capacity:   client.Capacity,
 				rate:       client.Rate,
 				lastRefill: now,
 			}
 		}
-		return true
+		return allowed
 	}
 
 	elapsedSecs := int(now.Sub(b.lastRefill).Seconds())
