@@ -1,4 +1,4 @@
-postgres:
+postgres: # Конфигурация базы данных
   user: postgres
   password: password
   dbname: clients
@@ -7,16 +7,19 @@ postgres:
   max_attempts: 5
 
 balancer:
-  algo: round-robin
-  servers:
+  algo: round-robin # Алгоритм балансировки: round-robin, least-connections, random
+  servers: # Адреса бэкендов
     - mock1:8080
     - mock2:8080
     - mock3:8080
-  check_path: /ping
+  check_path: /ping # Путь, по которому будут проводиться периодические GET-запросы для проверки жизнеспособности серверов (e.g.: GET http://mock1:8080/ping)
 
-limits:
+limits: # Лимиты, которые будут установлены для пользователей, для которых не были они заданы вручную через соответствующие эндпоинты
   default_max_keys: 5
   default_refill_rate: 1
+  type: interval # "interval" - Пополнение токенов через равные промежутки времени, используя time.Ticker. Также предлагаю альтернативный вариант: "time-based" - пересчёт доступных токенов, используя сохранённое последнее время пополнения токенов, при каждом обращении к лимитам
 
 api:
-  key: qwerty
+  key: qwerty # Апи-ключ, необходимый для ограничения доступа к добавлению, удалению, изменению или получению текущих лимитов клиентов
+  # Добавляется в заголовок X-Api-Key (e.g.: curl -X PUT "http://localhost:8080/clients" -H "X-Api-Key:qwerty" -d '{"id": "qwerty", "capacity": 1, "rate": 1}'
+

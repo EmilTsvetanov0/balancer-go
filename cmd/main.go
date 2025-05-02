@@ -73,16 +73,11 @@ func main() {
 
 	pgClient := postgresql.NewPgClient(pgxPool, logger)
 
-	// Limiter default config
+	// Limiter configuration
 	defaultMaxKeys := viper.GetInt("limits.default_max_keys")
 	defaultRefillRate := viper.GetInt("limits.default_refill_rate")
-	limiter := limits.NewLimit(ctx, defaultMaxKeys, defaultRefillRate, pgClient, logger)
-
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		limiter.RefillTokensPeriodically()
-	}()
+	limiterType := viper.GetString("limits.type")
+	limiter := limits.NewLimit(ctx, defaultMaxKeys, defaultRefillRate, pgClient, logger, limiterType)
 
 	// Server start
 	router := chi.NewRouter()
@@ -107,6 +102,8 @@ func main() {
 	}()
 
 	<-ctx.Done()
+
+	limiter.Stop()
 
 	shutdownCtx, cancelShutdown := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancelShutdown()
