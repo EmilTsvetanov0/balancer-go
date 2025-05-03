@@ -26,6 +26,8 @@ func init() {
 
 func main() {
 
+	log.SetOutput(os.Stdout)
+
 	logger := log.Default()
 
 	ctx, cancel := context.WithCancel(context.Background())

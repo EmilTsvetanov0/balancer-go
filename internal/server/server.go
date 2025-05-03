@@ -9,15 +9,14 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
+	"github.com/spf13/viper"
 	httpSwagger "github.com/swaggo/http-swagger"
 	"log"
 	"net/http"
 	"net/http/httputil"
 	"strings"
-
-	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
-	"github.com/spf13/viper"
 )
 
 type contextKey string
@@ -240,13 +239,21 @@ func (s *Service) ReverseProxyHandler(w http.ResponseWriter, r *http.Request) {
 		writeError(w, "backend not selected", http.StatusInternalServerError)
 		return
 	}
-	s.proxy.Director = func(req *http.Request) {
-		req.URL.Scheme = "http"
-		req.URL.Host = srv
-		req.URL.Path = strings.TrimPrefix(req.URL.Path, "/api")
-		if req.URL.Path == "" {
-			req.URL.Path = "/"
-		}
+
+	proxy := &httputil.ReverseProxy{
+		Director: func(req *http.Request) {
+			req.URL.Scheme = "http"
+			req.URL.Host = srv
+			req.URL.Path = strings.TrimPrefix(req.URL.Path, "/api")
+			if req.URL.Path == "" {
+				req.URL.Path = "/"
+			}
+		},
+		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
+			s.logger.Printf("server[ReverseProxyHandler]: proxy error: %v", err)
+			writeError(w, "bad gateway", http.StatusBadGateway)
+		},
 	}
-	s.proxy.ServeHTTP(w, r)
+
+	proxy.ServeHTTP(w, r)
 }
