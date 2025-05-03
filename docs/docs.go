@@ -3,9 +3,12 @@ package docs
 
 import (
 	"github.com/swaggo/swag"
+	"os"
 )
 
-const docTemplate = `{
+var port = os.Getenv("PORT")
+
+var docTemplate = `{
   "schemes": ["http"],
   "swagger": "2.0",
   "info": {
@@ -14,7 +17,7 @@ const docTemplate = `{
     "contact": {},
     "version": "1.0"
   },
-  "host": "localhost:8080",
+  "host": "localhost:` + port + `",
   "basePath": "/",
   "securityDefinitions": {
     "ApiKeyAuth": {
@@ -239,7 +242,7 @@ const docTemplate = `{
 
 var SwaggerInfo = &swag.Spec{
 	Version:          "1.0",
-	Host:             "",
+	Host:             "localhost:" + port,
 	BasePath:         "/",
 	Schemes:          []string{},
 	Title:            "Balancer API",

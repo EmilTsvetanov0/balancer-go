@@ -90,7 +90,7 @@ func main() {
 	logger.Printf("listening on port %s", port)
 
 	srv := &http.Server{
-		Addr:    ":" + port,
+		Addr:    ":8080",
 		Handler: router,
 	}
 
