@@ -1,6 +1,7 @@
 package server
 
 import (
+	_ "balancer/docs"
 	"balancer/internal/balancer"
 	"balancer/internal/domain"
 	"balancer/internal/limits"
@@ -8,6 +9,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	httpSwagger "github.com/swaggo/http-swagger"
 	"log"
 	"net/http"
 	"net/http/httputil"
@@ -101,6 +103,8 @@ func (s *Service) SetupRoutes(r chi.Router) {
 		r.Use(s.RateLimitAndPickServer())
 		r.Handle("/*", http.HandlerFunc(s.ReverseProxyHandler))
 	})
+
+	r.Get("/swagger/*", httpSwagger.WrapHandler) // Swagger документация
 }
 
 // APIKeyAuthMiddleware защищает эндпоинты CRUD
@@ -126,10 +130,10 @@ func (s *Service) GetClientHandler(w http.ResponseWriter, r *http.Request) {
 		if errors.Is(err, postgres.ErrClientNotFound) {
 			s.logger.Printf("server[GetClientHandler]: client %s not found", id)
 			writeError(w, "client not found", http.StatusNotFound)
-			return
+		} else {
+			s.logger.Printf("server[GetClientHandler]: error fetching client %s: %v", id, err)
+			writeError(w, "internal error", http.StatusInternalServerError)
 		}
-		s.logger.Printf("server[GetClientHandler]: error fetching client %s: %v", id, err)
-		writeError(w, "internal error", http.StatusInternalServerError)
 		return
 	}
 	writeJSON(w, http.StatusOK, client)
@@ -143,8 +147,13 @@ func (s *Service) CreateClientHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.pg.InsertClient(s.ctx, c); err != nil {
-		s.logger.Printf("server[CreateClientHandler]: could not create client %s: %v", c.Id, err)
-		writeError(w, "could not create client", http.StatusBadRequest)
+		if errors.Is(err, postgres.ErrClientAlreadyExists) {
+			s.logger.Printf("server[CreateClientHandler]: client %s already exists", c.Id)
+			writeError(w, "client already exists", http.StatusBadRequest)
+		} else {
+			s.logger.Printf("server[CreateClientHandler]: could not create client %s: %v", c.Id, err)
+			writeError(w, "could not create client", http.StatusInternalServerError)
+		}
 		return
 	}
 	s.limiter.SetLimit(c)
@@ -159,8 +168,13 @@ func (s *Service) UpdateClientHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.pg.UpdateClient(s.ctx, c); err != nil {
-		s.logger.Printf("server[UpdateClientHandler]: client %s not found for update", c.Id)
-		writeError(w, "client not found", http.StatusNotFound)
+		if errors.Is(err, postgres.ErrClientNotFound) {
+			s.logger.Printf("server[UpdateClientHandler]: client %s not found for update", c.Id)
+			writeError(w, "client not found", http.StatusNotFound)
+		} else {
+			s.logger.Printf("server[UpdateClientHandler]: could not update client %s: %v", c.Id, err)
+			writeError(w, "could not update client", http.StatusInternalServerError)
+		}
 		return
 	}
 	s.limiter.SetLimit(c)
@@ -170,8 +184,13 @@ func (s *Service) UpdateClientHandler(w http.ResponseWriter, r *http.Request) {
 func (s *Service) DeleteClientHandler(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if err := s.pg.DeleteClient(s.ctx, id); err != nil {
-		s.logger.Printf("server[DeleteClientHandler]: client %s not found for delete", id)
-		writeError(w, "client not found", http.StatusNotFound)
+		if errors.Is(err, postgres.ErrClientNotFound) {
+			s.logger.Printf("server[DeleteClientHandler]: client %s not found for delete", id)
+			writeError(w, "client not found", http.StatusNotFound)
+		} else {
+			s.logger.Printf("server[DeleteClientHandler]: could not delete client %s: %v", id, err)
+			writeError(w, "could not delete client", http.StatusInternalServerError)
+		}
 		return
 	}
 	s.limiter.ResetLimit(id)
