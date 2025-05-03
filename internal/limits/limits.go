@@ -83,6 +83,7 @@ func NewLimit(ctx context.Context, defaultCap int, defaultRate int, client *post
 // Методы для IntervalLimiter
 
 func (l *IntervalLimiter) refillTokensPeriodically() {
+	defer l.wg.Done()
 	for {
 		select {
 		case <-l.stopChan:
